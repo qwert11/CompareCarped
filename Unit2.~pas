@@ -1,0 +1,864 @@
+unit Unit2;
+
+interface
+
+
+uses
+  Classes, Grids, Messages, Dialogs, SysUtils, RTLConsts;
+
+
+type
+  TList = class(Classes.TList)
+  private
+    sg: TStringGrid;
+    procedure Pack_();
+    procedure ExportCountFromRecToStGrid(IdRec: Integer);
+  public
+    procedure Delete(Index: Integer);
+    constructor Create(sg: TStringGrid);
+    destructor Destroy; override;
+  end;
+
+  TInfoRecord = class
+    itsListArt: TStringList;
+    itsTitle: string;
+    itsWidth,
+    itsLength,
+    itsCount: Real;
+    itsPosInStGrd: Integer;
+    //procedure DelRecAtStGrd(sg: TStringGrid);
+  public
+    constructor Create(Position: Integer);
+    destructor Destroy(); override;
+  end;
+
+  TRPos = record
+    rBegin,
+    rHeadline,
+    rEnd: Integer;
+  end;
+
+  TPosition = record
+    cPosArt,
+    cPosTitle,
+    cPosWidth,
+    cPosLength,
+    cPosCount: Integer;
+    rPosition: TRPos;
+  end;
+
+  TInstruction = class
+   public
+     CarpedPos,
+     TrackPos,
+     ElsePos,
+     MetalPos,
+     PicturePos: TPosition;
+     function FindPosition(sg: TStringGrid): Boolean;
+
+     constructor Create(sg: TStringGrid);
+     destructor Destroy; override;
+   end;
+
+
+  TGoods = set of (gCarped, gTrack, gMetall, gPicture, gElse);
+
+  T3GridsForCompare = class
+  private
+    BuhgalterList,
+    MyList,
+    AllList: TList;
+    InstructMy,
+    InstructBuh: TInstruction;
+    sgPublic,
+    sgMy,
+    sgBuh: TStringGrid;
+    function Import(sgBuh, sgMy: TStringGrid): Boolean;
+    procedure ExportToStGrids(List: TList);
+    procedure CompareProduction(List1, List2: TList; Goods: TGoods);
+  public
+    constructor Create(sgBuh, sgMy, sgPublic: TStringGrid);
+    destructor Destroy(); override;
+  end;
+
+//  PInfoRecord = ^TInfoRecord;
+//  TInfoRecord = packed record
+//    listArt: TStringList;
+//    Title: string;
+//
+//  end;
+
+
+implementation
+
+uses Compare, Auto1U;
+
+{ T3GridsForCompare }
+
+procedure T3GridsForCompare.CompareProduction(List1, List2: TList; Goods: TGoods);
+label
+  ForList1;
+var
+  id1,
+  id2: Integer;
+  InfRec1,
+  InfRec2: TInfoRecord;
+begin
+  id1 := 0;
+  while  id1 <= List1.Count - 1 do
+    begin
+      id2 := 0;
+      while id2 <= List2.Count - 1 do
+        begin
+          InfRec1 := TInfoRecord(List1[id1]);
+          InfRec2 := TInfoRecord(List2[id2]);
+          if Compare2InfoRecord(InfRec1, InfRec2) >= 90 then
+            begin
+              if InfRec1.itsCount > InfRec2.itsCount then
+                begin
+                  InfRec1.itsCount := InfRec1.itsCount - InfRec2.itsCount;
+                  List1.ExportCountFromRecToStGrid(id1);
+                  List2.Delete(id2);
+                  Dec(id2);
+                end
+              else
+                if InfRec1.itsCount < InfRec2.itsCount then
+                  begin
+                    InfRec2.itsCount := InfRec2.itsCount - InfRec1.itsCount;
+                    List2.ExportCountFromRecToStGrid(id2);
+                    List1.Delete(id1);
+                    goto ForList1;
+                    //Break; // заново минуем Inc(id1)
+                  end
+                else
+                  begin
+                    List1.Delete(id1);
+                    List2.Delete(id2);
+                    goto ForList1;
+                    //Break; // заново минуем Inc(id1)
+                  end;
+            end;
+            Inc(id2);
+        end;
+        Inc(id1);
+        ForList1:
+    end;
+end;
+
+constructor T3GridsForCompare.Create(sgBuh, sgMy, sgPublic: TStringGrid);
+begin
+  BuhgalterList := TList.Create(sgBuh);
+  MyList := TList.Create(sgMy);
+  AllList := TList.Create(sgPublic);
+  Self.sgPublic := sgPublic;
+  Self.sgMy := sgMy;
+  Self.sgBuh := sgBuh;
+  InstructMy := TInstruction.Create(sgMy);
+  InstructBuh := TInstruction.Create(sgBuh);
+  Import(sgBuh, sgMy);
+  MyList.Pack_;
+  BuhgalterList.Pack_;
+  CompareProduction(BuhgalterList, MyList, [gCarped]);
+  ExportToStGrids(BuhgalterList);
+  //ExportToStGrids(MyList);
+end;
+
+destructor T3GridsForCompare.Destroy;
+begin
+  BuhgalterList.Free;
+  MyList.Free;
+  AllList.Free;
+  InstructMy.Free;
+  InstructBuh.Free;
+end;
+
+procedure T3GridsForCompare.ExportToStGrids(List: TList);
+var
+  i: Integer;
+begin
+  sgPublic.RowCount := List.Count;
+  sgPublic.ColCount := 5;
+  for i := 0 to List.Count - 1 do
+    begin
+      sgPublic.Cells[0, i] := TInfoRecord(List[i]).itsListArt[0];
+      sgPublic.Cells[1, i] := TInfoRecord(List[i]).itsTitle;
+      sgPublic.Cells[2, i] := FloatToStr(TInfoRecord(List[i]).itsWidth);
+      sgPublic.Cells[3, i] := FloatToStr(TInfoRecord(List[i]).itsLength);
+      sgPublic.Cells[4, i] := FloatToStr(TInfoRecord(List[i]).itsCount);
+      sgPublic.Row := i;
+      sgPublic.TopRow := i;
+      sgPublic.Refresh;
+    end;
+    sgPublic.Row := 0;
+    sgPublic.TopRow := 0;
+    sgPublic.Refresh;
+end;
+
+function T3GridsForCompare.Import(sgBuh, sgMy: TStringGrid): Boolean;
+  type
+    rec = record
+      itsListArt,
+      itsTitle: string;
+      itsWidth,
+      itsLength,
+      itsCount: Real;
+    end;
+
+  function ImportableMy(sgMy: TStringGrid; Position: TPosition; List: TList): Boolean;
+
+    function ExtractRowMy(Row: TStrings): rec;
+
+      function findArt(): string;
+      begin
+        Result := Trim(Row[0]);
+      end;
+
+      function findTitle(): string;
+      begin
+        Result := Trim(Row[1]);
+      end;
+
+      type
+        TCol = (cWidth = 3, cLength, cCount);
+
+      function find_Length_or_Width_or_Count(const cPos: Integer): Real;
+      var
+        s, tmpS: string;
+        i: Integer;
+      begin
+        Result := cPos;
+        if Result = - 1 then
+          Exit;
+        s := '';
+        tmpS := Row[cPos];
+
+        if tmpS = '' then
+        begin
+          Result := - 1;
+          Exit;
+        end;
+
+        for i := 1 to Length(tmpS) + 1 do
+          if tmpS[i] in ['0'..'9'] then
+            s := s + tmpS[i]
+          else
+            if (tmpS[i] = ',') or (tmpS[i] = '.') then
+              s := s + ',';
+        Result := StrToFloat(s);
+      end;
+    begin
+      with Result, Position do
+      begin
+        itsListArt := findArt;
+        itsTitle := findTitle;
+        itsWidth := find_Length_or_Width_or_Count(cPosWidth);
+        itsLength := find_Length_or_Width_or_Count(cPosLength);
+        itsCount := find_Length_or_Width_or_Count(cPosCount);
+      end;
+    end;
+
+  var
+    i: Integer;
+    InfoRec: TInfoRecord;
+    rec_: rec;
+
+  begin
+    Result := False;
+    for i := Position.rPosition.rBegin to Position.rPosition.rEnd do
+    begin
+      InfoRec := TInfoRecord.Create(i);
+      try
+        // извлекаем данные каждой строки сетки
+        rec_ := ExtractRowMy(sgMy.Rows[i]);
+        with InfoRec do
+        begin
+          itsListArt.Add(rec_.itsListArt);
+          itsTitle := rec_.itsTitle;
+          itsWidth := rec_.itsWidth;
+          itsLength := rec_.itsLength;
+          itsCount := rec_.itsCount;
+        end;
+        List.Add(InfoRec);
+      finally
+        InfoRec.Free;
+      end;
+    end;
+  end;
+
+  function ImportableBuh(sgMy: TStringGrid; rPosition: TRPos;
+      titlePos: TPosition): Boolean;
+
+    function ExtractRowBuh(Row: TStrings): rec;
+
+      function findArt(): string;
+      const
+        art = 'арт. ';
+      var
+        Position, Crement: Integer;
+        tmpS: string;
+      begin
+        Result := '';
+        tmpS := Trim(Row[titlePos.cPosArt]);
+        Position := Pos(art, tmpS) + Length(art);
+        Crement := 0;
+        if Position <> 0 then
+          repeat
+            Result := Result + tmpS[Position + Crement];
+            Inc(Crement);
+          until tmpS[Position + Crement] = '(';
+      end;
+
+      function findTitle(): string;
+      var
+        i: Integer;
+        s: string;
+      begin
+        Result := '';
+        s := Trim(Row[0]);
+
+        if s = '' then
+          Error(reAccessViolation);
+
+        // ищем мусор в виде размера с '*'
+        i := Pos('*', s);
+        if (i <> 0) and (i > 2) then
+          begin
+            repeat
+              Dec(i);
+            until (i < 3) or (s[i] in ['0'..'9']);
+            if i > 2 then
+              repeat
+                Dec(i);
+              until (i < 3) or (s[i] in ['A'..'z', 'А'..'я']);
+
+            SetLength(s, i);
+            Result := s;
+          end
+        else
+          begin
+            i := 1;
+
+            repeat
+              Result := Result + s[i];
+              Inc(i);
+            until s[i] = ',';
+          end;
+
+        // удаление из названия цифр
+        if (Length(s) > 0) and (s[i - 1] in ['0'..'9']) then
+        begin
+          if Pos(' ', Result) <> 0 then
+          begin
+            i := Length(Result);
+            repeat
+              Dec(i);
+            until Result[i] = ' ';
+          end;
+          SetLength(Result, i - 1);
+        end;
+      end;
+
+      function find_Length_or_Width_or_Count(cPos: Integer): Real;
+      var
+        s, tmpS: string;
+        i: Integer;
+      begin
+        s := '';
+        tmpS := Row[cPos];
+        for i := 1 to Length(tmpS) do
+          if tmpS[i] in ['0'..'9'] then
+            s := s + tmpS[i]
+          else
+            if (tmpS[i] = ',') or (tmpS[i] = '.') then
+              s := s + ',';
+        Result := StrToFloat(s);
+      end;
+
+      const
+        WLseparator = '*';
+      function FindWidthInTitle(): Real;
+      var
+        s, tmpS: string;
+        ifFind: Boolean;
+        i,
+        posSepar: Integer;
+      begin
+        Result := 0;
+        tmpS := Row[0];
+        posSepar := Pos('*', tmpS);
+        if posSepar = 0 then
+          Exit;
+
+        s := '';
+        ifFind := False;
+
+        for i :=  posSepar - 1 downto 1 do
+          begin
+            if ifFind and not(tmpS[i] in ['0'..'9', '.', ',']) then
+              Break;
+            if tmpS[i] in ['0'..'9'] then
+              begin
+                s := tmpS[i] + s;
+                ifFind := True;
+              end
+            else
+              if (tmpS[i] = ',') or (tmpS[i] = '.') then
+                s := ',' + s;
+          end;
+
+        Result := StrToFloat(s);
+      end;
+
+      function FindLengthInTitle(): Real;
+      var
+        s, tmpS: string;
+        ifFindCh,
+        ifFindSep: Boolean;
+        i,
+        posSepar: Integer;
+      begin
+        Result := 0;
+        tmpS := Row[0];
+        posSepar := Pos('*', tmpS);
+        if posSepar = 0 then
+          Exit;
+
+        s := '';
+        ifFindCh := False;
+        ifFindSep := False;
+
+        for i :=  posSepar + 1 to Length(tmpS) do
+          begin
+            if ifFindCh and not(tmpS[i] in ['0'..'9', '.', ',']) then
+              Break;
+            if tmpS[i] in ['0'..'9'] then
+              begin
+                s :=  s + tmpS[i];
+                ifFindCh := True;
+              end
+            else
+              if (tmpS[i] = ',') or (tmpS[i] = '.') then
+                begin
+                  if not ifFindCh then
+                    Error(reAccessViolation);
+                  if ifFindSep then
+                    Break;
+                  s := s + ',';
+                  ifFindSep := True;
+                end;
+
+          end;
+
+        Result := StrToFloat(s);
+      end;
+
+    begin
+      with Result, titlePos do
+      begin
+        itsListArt := findArt;
+        itsTitle := findTitle;
+        itsWidth := find_Length_or_Width_or_Count(cPosWidth);
+        if itsWidth = 0 then
+          itsWidth := FindWidthInTitle;
+        itsLength := find_Length_or_Width_or_Count(cPosLength);
+        if itsLength = 0 then
+          itsLength := FindLengthInTitle;
+        itsCount := find_Length_or_Width_or_Count(cPosCount);
+      end;
+    end;
+
+  var
+    i: Integer;
+    InfoRec: TInfoRecord;
+    rec_: rec;
+//    BadRowsListMy,
+//    BadRowsListBuh, TStringList;
+  begin
+    Result := False;
+    for i := rPosition.rBegin to rPosition.rEnd do
+    begin
+      InfoRec := TInfoRecord.Create(i);
+      try
+        // извлекаем данные каждой строки сетки
+        rec_ := ExtractRowBuh(sgBuh.Rows[i]);
+
+        with InfoRec do
+        begin
+          itsListArt.Add(rec_.itsListArt);
+          itsTitle := rec_.itsTitle;
+          itsWidth := rec_.itsWidth;
+          itsLength := rec_.itsLength;
+          itsCount := rec_.itsCount;
+        end;
+        BuhgalterList.Add(InfoRec);
+      except
+        InfoRec.Free;
+      end;
+    end;
+
+    //ShowMessage(IntToStr(BuhgalterList.Count));
+//
+//    for i := 0 to MyList.Count - 1 do
+//      TInfoRecord(MyList[i]).Free;
+//    MyList.Pack;
+    //MyList.Delete(3);
+    //MyList.Free;
+  end;
+
+//var
+//  i: Integer;
+begin
+  Result := False;
+  try
+    with TInstruction(InstructMy) do
+      ImportableMy(sgMy, CarpedPos, MyList);
+
+    with TInstruction(InstructBuh) do
+      ImportableMy(sgBuh, CarpedPos, BuhgalterList);
+
+//    with TInstructBuh(InstructBuh) do
+//      for i := 0 to High(CarpedPos) do
+//        ImportableBuh(sgBuh, CarpedPos[i], TitlePosition);
+    Result := True;
+  except
+
+  end;
+end;
+
+{ TInfoRecord }
+
+constructor TInfoRecord.Create(Position: Integer);
+begin
+  itsPosInStGrd := Position;
+  itsListArt := TStringList.Create;
+  itsListArt.Sorted := True;
+  itsListArt.Duplicates := dupIgnore;
+end;
+
+destructor TInfoRecord.Destroy;
+begin
+  itsListArt.Free;
+end;
+
+{ TList }
+
+destructor TList.Destroy;
+var
+  i: Integer;
+begin
+  inherited;
+  for i := 0 to Count - 1 do
+    if TInfoRecord(Self[i]) <> nil then
+      TInfoRecord(Self[i]).Free;
+end;
+
+
+procedure grFocus(gr: TStringGrid; Row: Integer);
+begin
+  if Row >= gr.RowCount then
+    Abort;
+  gr.TopRow := Row;
+  gr.LeftCol := 0;
+  gr.Row := Row;
+  gr.Refresh;
+end;
+
+Type
+  TFakeGrid=class(TCustomGrid);
+
+procedure TList.Delete(Index: Integer);
+var
+  i: Integer;
+begin
+  if (Index < 0) or (Index >= Count) then
+    Error(@SListIndexError, Index);
+  TFakeGrid(sg).DeleteRow(TInfoRecord(Self[Index]).itsPosInStGrd);
+  if TInfoRecord(Self[Index]) <> nil then
+    TInfoRecord(Self[Index]).Free;
+  inherited;
+  Pack;
+  for i := Index to Count - 1 do
+    Dec(TInfoRecord(Self[i]).itsPosInStGrd);
+  if Index > Count - 1 then
+    Dec(Index);
+  grFocus(sg, TInfoRecord(Self[Index]).itsPosInStGrd);
+end;
+
+constructor TList.Create(sg: TStringGrid);
+begin
+  Self.sg := sg;
+end;
+
+procedure TList.Pack_;
+  function Compare(InfoRecord1, InfoRecord2: TInfoRecord): Boolean;
+  begin
+    Result := False;
+    if (InfoRecord1 = InfoRecord2) then
+      Error(@SDuplicateClass, IndexOf(InfoRecord2));
+    if (InfoRecord1 = nil) then
+      Error('object under index %s does not exist', IndexOf(InfoRecord1));
+    if (InfoRecord2 = nil) then
+      Error('object under index %s does not exist', IndexOf(InfoRecord2));
+
+    case Compare2InfoRecord(InfoRecord1, InfoRecord2) of
+      120..200:
+        Result := True;
+      90..100:
+        begin
+          InfoRecord1.itsListArt.AddStrings(InfoRecord1.itsListArt);
+          Result := True;
+        end;
+    end;
+  end;
+var
+  i,
+  ii: Integer;
+begin
+  i := 0;
+
+  // сравниваем записи
+  while (i < Count - 1) do
+  begin
+    ii := i + 1;
+    while ii < Count do
+    begin
+      try
+        if Compare(TInfoRecord(Self[i]), TInfoRecord(Self[ii])) then
+          begin
+            TInfoRecord(Self[i]).itsCount := TInfoRecord(Self[i]).itsCount +
+                TInfoRecord(Self[ii]).itsCount;
+            ExportCountFromRecToStGrid(i);
+            Delete(ii);
+          end
+        else
+          Inc(ii);
+      except
+        on E: Exception do
+          begin
+            Error('Пустая строка №(%d) ' + E.Message, i);
+            Inc(ii);
+          end;
+      end;
+    end;
+    Inc(i);
+  end;
+
+  // удаляем с кол-вом "0"
+  i := 0;
+  while i < Count do
+  begin
+    if TInfoRecord(Self[i]).itsCount < 0 then
+      Error('Кол-во записи (%d) меньше нуля', i);
+    if TInfoRecord(Self[i]).itsCount = 0 then
+      Delete(i)
+    else
+      Inc(i);
+  end;
+end;
+
+procedure TList.ExportCountFromRecToStGrid(IdRec: Integer);
+begin
+  with TInfoRecord(Self[IdRec]) do
+    begin
+      sg.Cells[sg.ColCount - 1, itsPosInStGrd] := IntToStr(Round(itsCount));
+      grFocus(sg, itsPosInStGrd);
+    end;
+end;
+
+{ TInstruction }
+
+constructor TInstruction.Create(sg: TStringGrid);
+begin
+  FindPosition(sg);
+end;
+
+destructor TInstruction.Destroy;
+begin
+  inherited;
+end;
+
+
+{ TInstructMy }
+
+function TInstruction.FindPosition(sg: TStringGrid): Boolean;
+const
+
+  scArticul = 'Арт. Артикул.';
+  scTitle = 'Товар Название';
+  scCount = 'В налич. В нал. шт. В налич. В нал.';
+  scLength = 'Ш Ширина';
+  scWidth = 'В нал. (м) Дл. Длина';
+
+  function FindRow(): Boolean;
+    function FindPosInList(lS: TStrings; const s: string): Integer;
+    var
+      iCol: Integer;
+    begin
+      Result := - 1;
+      for iCol := 0 to sg.ColCount - 1 do
+        if Pos(Trim(lS[iCol]), s) <> 0 then
+          begin
+            Result := iCol;
+            Break;
+          end;
+    end;
+  var
+    iRow, Row: Integer;
+  begin
+    Result := False;
+    for iRow := 0 to sg.RowCount - 1 do
+      if Pos(Trim(sg.Cells[0, iRow]), scArticul) <> 0 then
+        with CarpedPos, CarpedPos.rPosition do
+        begin
+          rHeadline := iRow;
+          cPosArt := 0;
+          cPosTitle := FindPosInList(sg.Rows[iRow], scTitle);
+          cPosWidth := FindPosInList(sg.Rows[iRow], scWidth);
+          cPosLength := FindPosInList(sg.Rows[iRow], scLength);
+          cPosCount := FindPosInList(sg.Rows[iRow], scCount);
+
+          if Trim(sg.Cells[cPosTitle, iRow + 1]) = '' then
+            Exit;
+
+          rBegin := iRow + 1;
+
+          // ищем конец
+          Row := iRow + 2;
+
+          while Trim(sg.Cells[cPosTitle, Row]) <> '' do
+          begin
+            Result := True;
+            Inc(Row);
+          end;
+
+          if not Result then
+            Exit;
+
+          rEnd := Row - 1;
+
+          Break;
+        end;
+
+  end;
+begin
+  //Result := False;
+
+  // TitilePosition:
+  Result := FindRow;
+
+//  if not Result then
+//    Exit;
+
+  //Result := False;
+
+  // TitlePosition
+  // ElsePosition
+  // MetalPosition
+  // PicturePosition
+  // TrackPosition
+
+  //Result := True;
+end;
+
+{ TInstructBuh }
+//
+//function TInstructBuh.FindPosition(sg: TStringGrid): Boolean;
+//const
+//  scArticul = 'Арт. Артикул.';
+//  scTitle = 'Товар Название';
+//  scCount = 'В налич. В нал. шт. В налич. В нал.';
+//  scLength = 'Ш Ширина';
+//  scWidth = 'В нал. (м) Дл. Длина';
+//
+//  scNameArt = 'Товар/Склад/Документ';
+//  scCount = 'Конечный'#$A'Остаток';
+//  scLength = 'Длина';
+//  scWidth = 'Ширина';
+//
+//  function FindCol(lS: TStrings; const s: string): Integer;
+//  var
+//    iCol: Integer;
+//  begin
+//    Result := - 1;
+//    for iCol := 0 to sg.ColCount - 1 do
+//      if Pos(Trim(lS[iCol]), s) <> 0 then
+//        begin
+//          Result := iCol;
+//          Break;
+//        end;
+//  end;
+//
+//  function FindRow(const s: string; beginFind: Integer): TRPos;
+//  var
+//    iRow, nextRow: Integer;
+//  begin
+//    Result.rEnd := - 1;
+//    Result.rBegin := - 1;
+//    Result.rHeadline := - 1;
+//    for iRow := beginFind to sg.RowCount - 1 do
+//      if Pos(Trim(sg.Cells[0, iRow]), s) <> 0 then
+//        with Result do
+//        begin
+//          rHeadline := iRow;
+//          if (Trim(sg.Cells[0, iRow + 1]) = '') or
+//              (Trim(sg.Cells[3, iRow + 1]) = '') then
+//            Exit;
+//          rBegin := iRow + 1;
+//          for nextRow := iRow + 2 to sg.RowCount - 1 do
+//            if (Trim(sg.Cells[0, nextRow]) = '') or
+//                (Trim(sg.Cells[3, nextRow]) = '') then
+//              Exit
+//            else
+//              rEnd := nextRow;
+//        end;
+//
+//  end;
+//var
+//  iRow,
+//  newLength: Integer;
+//  temp: TRPos;
+//begin
+//  Result := False;
+//  try
+//    //   TitlePosition
+//    for iRow := 0 to sg.RowCount - 1 do
+//      if CompareText(Trim(sg.Cells[0, iRow]), scNameArt) = 0 then
+//        with TitlePosition, TitlePosition.rPosition do
+//          begin
+//            rHeadline := iRow;
+//            rBegin := iRow + 1;
+//            rEnd := sg.RowCount - 1;
+//            cPosArt := 0;
+//            cPosTitle := 0;
+//            cPosLength := FindCol(sg.Rows[iRow], scLength);
+//            cPosWidth := FindCol(sg.Rows[iRow], scWidth);
+//            cPosCount := FindCol(sg.Rows[iRow], scCount);
+//            Break;
+//          end;
+//
+//    // CarpedPosition:
+//    newLength := 0;
+//    temp.rEnd := TitlePosition.rPosition.rHeadline; // для поиска сначала сетки sg
+//    repeat
+//      temp := FindRow(scTitleCarped, temp.rEnd + 1);
+//      if temp.rEnd <> - 1 then
+//        begin
+//          Inc(newLength);
+//          SetLength(CarpedPos, newLength);
+//          CarpedPos[newLength - 1] := temp;
+//        end
+//      else
+//        Break;
+//    until False;
+//    Result := True;
+//  except
+//
+//  end;
+//
+//  // ElsePosition
+//  // MetalPosition
+//  // PicturePosition
+//  // TrackPosition
+//end;
+
+end.

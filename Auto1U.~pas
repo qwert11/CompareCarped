@@ -1,0 +1,10 @@
+unit Auto1U;
+
+interface
+
+const
+  scTitleCarped = 'Килими Ковры KOVANTEX Ковры Бельгия LANO Ковры Ибрагим Ковры Китай';
+
+implementation
+
+end.
